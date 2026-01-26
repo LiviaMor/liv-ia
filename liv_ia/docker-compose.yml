@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: livia-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Remova a seção 'deploy' abaixo se não tiver GPU NVIDIA
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Serviço auxiliar para baixar os modelos automaticamente
+  ollama-setup:
+    image: ollama/ollama:latest
+    container_name: livia-ollama-setup
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      echo '📦 Baixando modelos...' &&
+      ollama pull deepseek-coder-v2 &&
+      ollama pull nomic-embed-text &&
+      echo '✅ Modelos instalados!' &&
+      ollama list
+      "
+    restart: "no"
+
+volumes:
+  ollama_data:
+    driver: local
