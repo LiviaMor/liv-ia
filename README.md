@@ -194,6 +194,68 @@ Edite `brain.py` para usar `qwen2.5-coder:7b`.
 - 8GB RAM (16GB recomendado)
 - 10GB espaço em disco
 
+## Desenvolvimento
+
+### Instalar Dependências de Desenvolvimento
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Executar Testes
+
+```bash
+# Todos os testes
+make test
+
+# Apenas testes unitários
+make test-unit
+
+# Apenas testes de integração (requer Ollama rodando)
+make test-int
+
+# Com cobertura
+pytest tests/ -v --cov=. --cov-report=html
+```
+
+### Windows
+
+```powershell
+# Todos os testes
+.\run-tests.ps1
+
+# Testes unitários
+.\run-tests.ps1 -Type unit
+
+# Testes de integração
+.\run-tests.ps1 -Type integration
+
+# Com cobertura
+.\run-tests.ps1 -Type coverage
+```
+
+### Linting e Formatação
+
+```bash
+# Verificar código
+make lint
+
+# Formatar código
+make format
+
+# Verificar segurança
+make security
+```
+
+### CI/CD
+
+Pipeline automatizado no GitHub Actions:
+- Lint (Black, isort, Flake8)
+- Testes unitários
+- Testes de integração
+- Análise de segurança (Safety, Bandit)
+- Build Docker
+
 ## Melhorias Futuras
 
 ### Alta Prioridade

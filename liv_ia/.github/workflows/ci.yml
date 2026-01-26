@@ -1,0 +1,152 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort
+    
+    - name: Run Black
+      run: black --check .
+    
+    - name: Run isort
+      run: isort --check-only .
+    
+    - name: Run Flake8
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-mock
+    
+    - name: Run Unit Tests
+      run: pytest tests/unit -v --cov=. --cov-report=xml
+    
+    - name: Upload Coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-mock
+    
+    - name: Wait for Ollama
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:11434/api/tags; do sleep 2; done'
+    
+    - name: Pull Test Model
+      run: |
+        docker exec $(docker ps -q -f ancestor=ollama/ollama:latest) ollama pull qwen2.5-coder:7b
+        docker exec $(docker ps -q -f ancestor=ollama/ollama:latest) ollama pull nomic-embed-text
+    
+    - name: Run Integration Tests
+      run: pytest tests/integration -v
+      env:
+        OLLAMA_BASE_URL: http://localhost:11434
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+    
+    - name: Run Safety Check
+      run: safety check --json
+      continue-on-error: true
+    
+    - name: Run Bandit
+      run: bandit -r . -f json -o bandit-report.json
+      continue-on-error: true
+    
+    - name: Upload Bandit Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: bandit-report
+        path: bandit-report.json
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Validate docker-compose
+      run: docker-compose config
+    
+    - name: Build Docker Compose
+      run: docker-compose up -d
+    
+    - name: Check Services
+      run: |
+        sleep 10
+        docker-compose ps
+        docker-compose logs
+    
+    - name: Cleanup
+      run: docker-compose down -v

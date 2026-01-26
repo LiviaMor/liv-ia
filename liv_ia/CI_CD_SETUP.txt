@@ -1,0 +1,84 @@
+CI/CD Pipeline - LIV IA
+========================
+
+ESTRUTURA CRIADA:
+
+1. GitHub Actions (.github/workflows/ci.yml)
+   - Lint: Black, isort, Flake8
+   - Testes unitários com cobertura
+   - Testes de integração com Ollama
+   - Análise de segurança: Safety, Bandit
+   - Validação Docker Compose
+
+2. Testes
+   tests/
+   ├── __init__.py
+   ├── unit/
+   │   ├── __init__.py
+   │   ├── test_brain.py       # Testes do motor de IA
+   │   └── test_ingestor.py    # Testes do processador
+   └── integration/
+       ├── __init__.py
+       └── test_e2e.py          # Testes end-to-end
+
+3. Configurações
+   - pytest.ini              # Config pytest
+   - pyproject.toml          # Config Black, isort, coverage
+   - .flake8                 # Config Flake8
+   - requirements-dev.txt    # Dependências de dev
+
+4. Scripts
+   - Makefile                # Linux/Mac
+   - run-tests.ps1           # Windows
+
+COMO USAR:
+
+Linux/Mac:
+  make test          # Todos os testes
+  make test-unit     # Unitários
+  make test-int      # Integração
+  make lint          # Verificar código
+  make format        # Formatar código
+
+Windows:
+  .\run-tests.ps1                    # Todos
+  .\run-tests.ps1 -Type unit         # Unitários
+  .\run-tests.ps1 -Type integration  # Integração
+  .\run-tests.ps1 -Type lint         # Verificar
+  .\run-tests.ps1 -Type format       # Formatar
+
+PIPELINE GITHUB ACTIONS:
+
+Triggers:
+  - Push em main/develop
+  - Pull requests
+
+Jobs:
+  1. lint          # Verifica formatação
+  2. test          # Testes unitários + cobertura
+  3. integration   # Testes com Ollama real
+  4. security      # Análise de segurança
+  5. docker        # Valida Docker Compose
+
+COBERTURA DE TESTES:
+
+Unitários:
+  - Inicialização de classes
+  - Parâmetros customizados
+  - Formatação de histórico
+  - Tratamento de erros
+  - Validações de entrada
+
+Integração:
+  - Conexão com Ollama
+  - Perguntas sem documentos
+  - Continuidade do chat
+  - Health checks
+
+PRÓXIMOS PASSOS:
+
+1. Configurar GitHub Actions no repositório
+2. Adicionar badge de status no README
+3. Configurar Codecov para cobertura
+4. Adicionar testes de performance
+5. Implementar testes de carga
