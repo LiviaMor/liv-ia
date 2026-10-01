@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from brain import LIVIAEngine, route_knowledge_base
+from brain import LIVIAEngine
 
 
 class TestLIVIAEngine:
@@ -144,19 +144,48 @@ class TestSourceCitation:
         assert result.count("buffer.md") == 1
 
 
-class TestKnowledgeBaseRouting:
-    """Testes para o roteador por knowledge base"""
+class TestPersona:
+    """Testes para o foco/especialidade da sessão (persona)"""
 
-    def test_route_nodejs(self):
-        assert route_knowledge_base("Como funciona o event loop do Node.js?") == "nodejs"
+    @patch("brain.OllamaLLM")
+    @patch("brain.OllamaEmbeddings")
+    def test_set_persona(self, mock_embeddings, mock_llm):
+        engine = LIVIAEngine()
+        assert engine.persona == ""
+        engine.set_persona("especialista em Node.js")
+        assert engine.persona == "especialista em Node.js"
+        assert "Node.js" in engine._persona_line()
 
-    def test_route_gps(self):
-        assert route_knowledge_base("Como fazer parsing de sentenças NMEA do GPS?") == "gps"
+    @patch("brain.OllamaLLM")
+    @patch("brain.OllamaEmbeddings")
+    def test_persona_line_empty_when_unset(self, mock_embeddings, mock_llm):
+        engine = LIVIAEngine()
+        assert engine._persona_line() == ""
 
-    def test_route_microservices(self):
-        base = route_knowledge_base("Explique o padrão SAGA em microsserviços event-driven")
-        assert base == "microservices"
 
-    def test_route_default_when_no_match(self):
-        assert route_knowledge_base("Qual a capital da França?") == "livia_default"
-        assert route_knowledge_base("algo", default="custom") == "custom"
+class TestLongTermMemory:
+    """Testes para a memória de longo prazo (indexação de conversas)"""
+
+    @patch("brain.OllamaLLM")
+    @patch("brain.OllamaEmbeddings")
+    def test_remember_empty_returns_zero(self, mock_embeddings, mock_llm):
+        engine = LIVIAEngine()
+        assert engine.remember_conversation([]) == 0
+
+    @patch("brain.OllamaLLM")
+    @patch("brain.OllamaEmbeddings")
+    def test_remember_indexes_conversation(self, mock_embeddings, mock_llm):
+        engine = LIVIAEngine()
+        engine.vectorstore = Mock()
+        messages = [
+            {"role": "user", "content": "O que é event loop?"},
+            {"role": "assistant", "content": "É o mecanismo de..."},
+        ]
+        n = engine.remember_conversation(messages, feedback="bom")
+
+        assert n == 1
+        engine.vectorstore.add_texts.assert_called_once()
+        # Verifica que o feedback foi para os metadados
+        _, kwargs = engine.vectorstore.add_texts.call_args
+        assert kwargs["metadatas"][0]["feedback"] == "bom"
+        assert kwargs["metadatas"][0]["source"] == "memoria_conversa"

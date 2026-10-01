@@ -58,44 +58,6 @@ Mantenha a continuidade da conversa.
 Resposta:"""
 
 
-# Palavras-chave por knowledge base, usadas pelo roteador simples abaixo.
-# Permite direcionar a pergunta para a collection mais provável, reduzindo
-# ruído de retrieval (ex.: pergunta de GPS busca na base "gps").
-KNOWLEDGE_BASE_KEYWORDS = {
-    "nodejs": ["node", "nodejs", "npm", "express", "event loop", "stream", "buffer"],
-    "microservices": [
-        "microsserviço",
-        "microservico",
-        "microservice",
-        "event-driven",
-        "event driven",
-        "cqrs",
-        "event sourcing",
-        "saga",
-        "mensageria",
-        "kafka",
-        "rabbitmq",
-        "arquitetura",
-    ],
-    "gps": ["gps", "gnss", "satélite", "satelite", "nmea", "geolocaliz", "navegação", "navegacao"],
-}
-
-
-def route_knowledge_base(question: str, default: str = "livia_default") -> str:
-    """Escolhe a knowledge base mais provável para a pergunta.
-
-    Heurística simples por palavras-chave: conta ocorrências por base e
-    retorna a de maior pontuação. Se nada casar, usa a base padrão.
-    """
-    text = question.lower()
-    best, best_score = default, 0
-    for base, keywords in KNOWLEDGE_BASE_KEYWORDS.items():
-        score = sum(1 for kw in keywords if kw in text)
-        if score > best_score:
-            best, best_score = base, score
-    return best
-
-
 # Padrões que indicam pedido de criação de slides Marp no chat.
 _MARP_INTENT = re.compile(
     r"\b(marp|slides?|apresenta[çc][aã]o|apresenta[çc][õo]es)\b",
@@ -132,6 +94,7 @@ class LIVIAEngine:
     ):
         self.storage_path = storage_path
         self.collection_name = collection_name
+        self.persona = ""  # Foco/especialidade definido na 1ª mensagem do chat
         self.llm = OllamaLLM(model=model_name, temperature=0.3, base_url=ollama_base_url)
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url=ollama_base_url)
         self.vectorstore = None
@@ -146,6 +109,62 @@ class LIVIAEngine:
                 embedding_function=self.embeddings,
                 collection_name=self.collection_name,
             )
+
+    def set_persona(self, persona: str) -> None:
+        """Define o foco/especialidade do assistente para a sessão de chat.
+
+        A persona vem da 1ª mensagem do chat (ex.: 'especialista em Node.js')
+        e é injetada nos prompts para orientar o tom e o foco das respostas.
+        Não troca a base de conhecimento — a busca continua unificada.
+        """
+        self.persona = (persona or "").strip()
+
+    def _persona_line(self) -> str:
+        """Linha de persona para injeção nos prompts (vazia se não definida)."""
+        if not self.persona:
+            return ""
+        return f"\nFoco desta conversa: {self.persona}.\n"
+
+    def remember_conversation(self, messages, feedback: str = "") -> int:
+        """Indexa uma conversa na base RAG (memória de longo prazo).
+
+        Transforma o diálogo em um documento e o adiciona à collection, para
+        que sessões futuras possam recuperá-lo por busca semântica. É memória
+        baseada em recuperação (não re-treina o modelo), portanto segura.
+
+        Args:
+            messages: lista de dicts {'role', 'content'}.
+            feedback: avaliação opcional ('bom'/'ruim') guardada como metadado.
+
+        Returns:
+            1 se indexou, 0 se não havia o que indexar.
+        """
+        if not messages:
+            return 0
+
+        texto = "\n".join(f"{m.get('role', '?')}: {m.get('content', '')}" for m in messages)
+        if not texto.strip():
+            return 0
+
+        from datetime import datetime
+
+        metadata = {
+            "source": "memoria_conversa",
+            "timestamp": datetime.now().isoformat(),
+            "feedback": feedback or "sem_avaliacao",
+            "persona": self.persona or "",
+        }
+
+        if self.vectorstore is None:
+            # Cria a base caso ainda não exista, para começar a memória.
+            self.vectorstore = Chroma(
+                persist_directory=self.storage_path,
+                embedding_function=self.embeddings,
+                collection_name=self.collection_name,
+            )
+
+        self.vectorstore.add_texts([texto], metadatas=[metadata])
+        return 1
 
     @staticmethod
     def _format_sources(source_documents) -> str:
@@ -210,6 +229,7 @@ class LIVIAEngine:
             history_text = self._format_chat_history()
             prompt = (
                 "Você é a LIV IA, uma Arquiteta de Soluções Sênior especialista em HealthTech. "
+                f"{self._persona_line()}"
                 f"\n\nHistórico da conversa:\n{history_text}\n\n"
                 f"Continue a conversa respondendo: {message}"
             )
@@ -223,7 +243,7 @@ class LIVIAEngine:
         context = "\n\n".join([doc.page_content for doc in docs])
 
         prompt = CHAT_PROMPT.format(
-            decision_flow=DECISION_FLOW,
+            decision_flow=DECISION_FLOW + self._persona_line(),
             chat_history=history_text,
             context=context,
             question=message,

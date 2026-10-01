@@ -22,35 +22,34 @@ console = Console()
 
 
 def show_welcome():
-    """Exibe boas-vindas e menu principal"""
+    """Exibe boas-vindas do chat direto."""
     console.clear()
     welcome_text = """
 [bold cyan]╔═══════════════════════════════════════════════════════╗
-║                    LIV IA v1.0                        ║
+║                    LIV IA v2.0                        ║
 ║        Arquiteta de Soluções Sênior Local             ║
 ╚═══════════════════════════════════════════════════════╝[/bold cyan]
 
-[dim]Especialista em HealthTech, Padrões de Projeto e Automação[/dim]
+[dim]Converse direto. Na 1ª mensagem, diga a especialidade/foco do chat
+(ex.: "especialista em Node.js" ou "foco em microsserviços").[/dim]
+
+[dim]Comandos: /ajuda  /indexar  /status  /feedback bom|ruim  /sair[/dim]
     """
     console.print(welcome_text)
 
 
-def show_menu():
-    """Exibe o menu de opções"""
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column("Opção", style="cyan bold", width=8)
-    table.add_column("Descrição", style="white")
-
-    table.add_row("1", "Iniciar Chat Interativo")
-    table.add_row("2", "Fazer Pergunta Rápida")
-    table.add_row("3", "Indexar Documentos (PDF, MD, código...)")
-    table.add_row("4", "Ver Conversas Salvas")
-    table.add_row("5", "Status da Base de Conhecimento")
-    table.add_row("6", "Configurações")
-    table.add_row("0", "Sair")
-
+def show_help():
+    """Mostra os comandos disponíveis no chat."""
+    table = Table(show_header=True, title="Comandos")
+    table.add_column("Comando", style="cyan")
+    table.add_column("O que faz", style="white")
+    table.add_row("/ajuda", "Mostra esta lista")
+    table.add_row("/indexar", "Indexa documentos na base de conhecimento")
+    table.add_row("/status", "Mostra o status da base")
+    table.add_row("/feedback bom|ruim", "Avalia a conversa atual (ajuda a treinar)")
+    table.add_row("/sair", "Encerra e salva a conversa na memória")
+    table.add_row("(frase)", "'cria um marp sobre X' gera uma apresentação")
     console.print(table)
-    console.print()
 
 
 def save_conversation(messages, folder="docs/conversas"):
@@ -97,154 +96,133 @@ def list_conversations(folder="docs/conversas"):
     console.print(table)
 
 
-def show_quick_options():
-    """Mostra opções rápidas durante o chat"""
-    options = [
-        "Sugerir arquitetura",
-        "Analisar padrões",
-        "Boas práticas HealthTech",
-        "Segurança e LGPD",
-        "Otimização de performance",
-        "Escrever minha pergunta",
-    ]
-
-    table = Table(show_header=False, box=None, padding=(0, 1))
-    table.add_column("Opção", style="dim", width=4)
-    table.add_column("Descrição", style="cyan")
-
-    for i, opt in enumerate(options, 1):
-        table.add_row(f"[{i}]", opt)
-
-    console.print("\n[dim]Opções rápidas:[/dim]")
-    console.print(table)
+def _handle_slides(engine, user_input, messages):
+    """Trata pedido de slides Marp dentro do chat. Retorna True se tratou."""
+    topic = detect_slides_request(user_input)
+    if not topic:
+        return False
+    console.print("\n[bold cyan]LIV IA:[/bold cyan] gerando apresentação Marp...")
+    try:
+        with console.status("[cyan]Montando os slides...[/cyan]"):
+            path = engine.generate_slides(topic)
+        msg = f"Apresentação Marp salva em: {path}"
+        console.print(f"[green]OK[/green] {msg}")
+        console.print(f"[dim]Converter para PDF:[/dim] npx -y @marp-team/marp-cli {path} --pdf")
+        messages.append({"role": "assistant", "content": msg})
+    except Exception as e:
+        console.print(f"[red]ERRO[/red] ao gerar slides: {e}")
+    console.print("\n" + "─" * 60 + "\n")
+    return True
 
 
-def interactive_chat():
-    """Chat interativo com opções e salvamento"""
-    console.print(
-        Panel.fit(
-            "[bold cyan]LIV IA[/bold cyan] - Chat Interativo\n"
-            "[dim]Pressione Ctrl+C para sair e salvar a conversa[/dim]",
-            border_style="cyan",
-        )
-    )
+def chat_loop():
+    """Chat direto: entra sem menu; a 1ª mensagem define a especialidade.
+
+    A conversa é corrida. Comandos começam com '/'. Ao sair, a conversa é
+    salva em disco e indexada na memória de longo prazo (RAG), com o feedback
+    informado — assim a LIV IA fica um pouco melhor a cada dia.
+    """
+    show_welcome()
 
     engine = LIVIAEngine()
     messages = []
+    feedback = ""
+    first_message = True
 
     try:
         while True:
-            show_quick_options()
-
-            choice = Prompt.ask(
-                "\n[bold green]Escolha uma opção ou digite sua pergunta[/bold green]", default="6"
+            prompt_label = (
+                "[bold green]Qual a especialidade/foco deste chat?[/bold green]"
+                if first_message
+                else "[bold green]Você[/bold green]"
             )
+            user_input = Prompt.ask(f"\n{prompt_label}").strip()
+            if not user_input:
+                continue
 
-            # Opções rápidas
-            quick_prompts = {
-                "1": "Sugira uma arquitetura de software adequada para o meu projeto",
-                "2": "Analise os padrões de projeto mais adequados para esta situação",
-                "3": "Quais são as melhores práticas de HealthTech que devo seguir?",
-                "4": "Como garantir segurança e conformidade com LGPD?",
-                "5": "Como posso otimizar a performance da aplicação?",
-            }
+            # --- Comandos especiais ---
+            if user_input.startswith("/"):
+                cmd, _, arg = user_input.partition(" ")
+                cmd = cmd.lower()
+                if cmd == "/sair":
+                    break
+                if cmd == "/ajuda":
+                    show_help()
+                    continue
+                if cmd == "/indexar":
+                    ingest_documents()
+                    continue
+                if cmd == "/status":
+                    show_status()
+                    continue
+                if cmd == "/feedback":
+                    feedback = arg.strip().lower() or "sem_avaliacao"
+                    console.print(f"[green]OK[/green] Feedback registrado: [cyan]{feedback}[/cyan]")
+                    continue
+                console.print("[yellow]Comando desconhecido. Use /ajuda.[/yellow]")
+                continue
 
-            if choice in quick_prompts:
-                user_input = quick_prompts[choice]
-                console.print(f"\n[bold green]Você:[/bold green] {user_input}")
-            elif choice == "6" or not choice.isdigit():
-                user_input = Prompt.ask("\n[bold green]Você[/bold green]")
-            else:
-                console.print("[yellow]Opção inválida. Digite sua pergunta:[/yellow]")
-                user_input = Prompt.ask("\n[bold green]Você[/bold green]")
-
-            if not user_input.strip():
+            # --- 1ª mensagem define a especialidade/foco (persona) ---
+            if first_message:
+                engine.set_persona(user_input)
+                first_message = False
+                messages.append({"role": "system", "content": f"especialidade: {user_input}"})
+                console.print(
+                    f"\n[dim]Foco definido: [cyan]{user_input}[/cyan]. "
+                    "Pode conversar normalmente.[/dim]\n"
+                )
                 continue
 
             messages.append({"role": "user", "content": user_input})
 
-            # Pedido de slides Marp? Gera e salva o arquivo localmente.
-            topic = detect_slides_request(user_input)
-            if topic:
-                console.print("\n[bold cyan]LIV IA:[/bold cyan] gerando apresentação Marp...")
-                try:
-                    with console.status("[cyan]Montando os slides...[/cyan]"):
-                        path = engine.generate_slides(topic)
-                    msg = f"Apresentação Marp salva em: {path}"
-                    console.print(f"[green]OK[/green] {msg}")
-                    console.print(
-                        "[dim]Converter para PDF:[/dim] " f"npx -y @marp-team/marp-cli {path} --pdf"
-                    )
-                    messages.append({"role": "assistant", "content": msg})
-                except Exception as e:
-                    console.print(f"[red]ERRO[/red] ao gerar slides: {e}")
-                console.print("\n" + "─" * 60 + "\n")
+            # Pedido de slides Marp?
+            if _handle_slides(engine, user_input, messages):
                 continue
 
             console.print("\n[bold cyan]LIV IA:[/bold cyan]")
             with console.status("[cyan]Pensando...[/cyan]"):
                 response = engine.chat(user_input)
-
             console.print(Markdown(response))
             messages.append({"role": "assistant", "content": response})
-
             console.print("\n" + "─" * 60 + "\n")
 
     except KeyboardInterrupt:
-        console.print("\n\n[yellow]Encerrando chat...[/yellow]")
+        console.print("\n")
 
-        if messages:
-            if Confirm.ask("\n[cyan]Deseja salvar esta conversa?[/cyan]", default=True):
-                filename = save_conversation(messages)
-                console.print(f"[green]OK[/green] Conversa salva em: [cyan]{filename}[/cyan]")
+    _finish_session(engine, messages, feedback)
 
+
+def _finish_session(engine, messages, feedback):
+    """Salva a conversa em disco e na memória de longo prazo ao encerrar."""
+    console.print("\n[yellow]Encerrando...[/yellow]")
+
+    # Considera apenas mensagens reais (ignora o marcador de especialidade).
+    reais = [m for m in messages if m.get("role") in ("user", "assistant")]
+    if not reais:
         console.print("[yellow]Até logo![/yellow]\n")
-
-
-def quick_ask():
-    """Pergunta rápida"""
-    question = Prompt.ask("\n[bold green]Sua pergunta[/bold green]")
-
-    if not question.strip():
-        console.print("[yellow]Pergunta vazia.[/yellow]")
         return
 
-    console.print(
-        Panel.fit(
-            "[bold cyan]LIV IA[/bold cyan] - Consultando base de conhecimento...",
-            border_style="cyan",
-        )
-    )
+    if Confirm.ask("\n[cyan]Salvar esta conversa?[/cyan]", default=True):
+        filename = save_conversation(messages)
+        console.print(f"[green]OK[/green] Conversa salva em: [cyan]{filename}[/cyan]")
 
-    engine = LIVIAEngine()
-    try:
-        with console.status("[cyan]Pensando...[/cyan]"):
-            response = engine.ask(question)
+        # Memória de longo prazo: indexa a conversa na base (seguro, via RAG).
+        try:
+            n = engine.remember_conversation(reais, feedback=feedback)
+            if n:
+                console.print(
+                    "[green]OK[/green] Conversa adicionada à memória de longo prazo "
+                    "(a LIV IA vai lembrar dela nas próximas sessões)."
+                )
+        except Exception as e:
+            console.print(f"[dim]Memória não atualizada ({e}).[/dim]")
 
-        console.print("\n[bold cyan]Resposta:[/bold cyan]\n")
-        console.print(Markdown(response))
-        console.print()
-
-        if Confirm.ask("\n[cyan]Deseja salvar esta resposta?[/cyan]", default=False):
-            messages = [
-                {"role": "user", "content": question},
-                {"role": "assistant", "content": response},
-            ]
-            filename = save_conversation(messages)
-            console.print(f"[green]OK[/green] Resposta salva em: [cyan]{filename}[/cyan]")
-
-    except Exception as e:
-        console.print(f"[red]ERRO[/red] {str(e)}")
+    console.print("[yellow]Até logo![/yellow]\n")
 
 
 def ingest_documents():
-    """Indexa documentos (PDF, Markdown, texto e código-fonte)"""
+    """Indexa documentos (PDF, Markdown, texto e código-fonte) na base única."""
     path = Prompt.ask("\n[cyan]Caminho da pasta com documentos[/cyan]", default="./docs")
-
-    collection = Prompt.ask(
-        "\n[cyan]Nome da knowledge base[/cyan] [dim](ex: react, aws, healthtech)[/dim]",
-        default="livia_default",
-    )
 
     console.print(
         Panel.fit("[bold cyan]LIV IA[/bold cyan] - Processando documentos...", border_style="cyan")
@@ -253,10 +231,8 @@ def ingest_documents():
     processor = DocumentProcessor()
     try:
         with console.status("[cyan]Processando documentos...[/cyan]"):
-            count = processor.ingest_directory(path, collection_name=collection)
-        console.print(
-            f"[green]OK[/green] {count} documentos indexados na base " f"[cyan]{collection}[/cyan]!"
-        )
+            count = processor.ingest_directory(path)
+        console.print(f"[green]OK[/green] {count} documento(s) indexado(s) na base!")
     except Exception as e:
         console.print(f"[red]ERRO[/red] {str(e)}")
 
@@ -289,57 +265,9 @@ def show_status():
         )
 
 
-def show_settings():
-    """Mostra e permite alterar configurações"""
-    console.print(Panel.fit("[bold cyan]Configurações[/bold cyan]", border_style="cyan"))
-
-    table = Table(show_header=True)
-    table.add_column("Configuração", style="cyan")
-    table.add_column("Valor Atual", style="white")
-
-    table.add_row("Modelo de Chat", "deepseek-coder-v2")
-    table.add_row("Modelo de Embeddings", "nomic-embed-text")
-    table.add_row("URL do Ollama", "http://localhost:11434")
-    table.add_row("Pasta de Storage", ".livia_storage")
-    table.add_row("Pasta de Conversas", "docs/conversas")
-
-    console.print(table)
-    console.print("\n[dim]Para alterar, edite o arquivo brain.py[/dim]")
-
-
 def main():
-    """Função principal"""
-    while True:
-        show_welcome()
-        show_menu()
-
-        choice = Prompt.ask(
-            "[bold cyan]Escolha uma opção[/bold cyan]",
-            choices=["0", "1", "2", "3", "4", "5", "6"],
-            default="1",
-        )
-
-        console.print()
-
-        if choice == "0":
-            console.print("[yellow]Até logo![/yellow]\n")
-            break
-        elif choice == "1":
-            interactive_chat()
-        elif choice == "2":
-            quick_ask()
-        elif choice == "3":
-            ingest_documents()
-        elif choice == "4":
-            list_conversations()
-        elif choice == "5":
-            show_status()
-        elif choice == "6":
-            show_settings()
-
-        if choice != "1":  # Chat já tem seu próprio fluxo
-            console.print()
-            Prompt.ask("\n[dim]Pressione Enter para continuar[/dim]", default="")
+    """Função principal: entra direto no chat."""
+    chat_loop()
 
 
 if __name__ == "__main__":

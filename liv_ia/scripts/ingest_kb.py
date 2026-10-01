@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Indexa as knowledge bases baixadas por bootstrap_kb.sh.
+Indexa a documentação baixada por bootstrap_kb.sh na base única da LIV IA.
 
-Cada pasta em knowledge/ é indexada em uma collection separada do Chroma:
-
-    knowledge/nodejs/        -> collection "nodejs"
-    knowledge/microservices/ -> collection "microservices"
-    knowledge/gps/           -> collection "gps"
+Todas as pastas em knowledge/ (nodejs, microservices, gps, ...) são indexadas
+na MESMA collection ("livia_default"). A busca é unificada: a LIV IA procura
+em todo o conhecimento, sem fragmentar por tema.
 
 Uso:
-    python scripts/ingest_kb.py              # indexa todas as bases encontradas
-    python scripts/ingest_kb.py nodejs gps   # indexa apenas as bases informadas
+    python scripts/ingest_kb.py                 # indexa todas as pastas
+    python scripts/ingest_kb.py nodejs gps      # indexa apenas as pastas dadas
 
 Requer o Ollama rodando (docker compose up -d) com o modelo nomic-embed-text,
 pois a geração de embeddings acontece aqui.
@@ -23,27 +21,27 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from ingestor import DocumentProcessor  # noqa: E402
+from ingestor import DEFAULT_COLLECTION, DocumentProcessor  # noqa: E402
 
 KB_ROOT = PROJECT_ROOT / "knowledge"
 
-# Mapa pasta -> nome da collection (knowledge base).
-KNOWLEDGE_BASES = {
-    "nodejs": "nodejs",
-    "microservices": "microservices",
-    "gps": "gps",
-}
+
+def _available_folders():
+    """Lista as subpastas de knowledge/ (cada uma é uma fonte de documentos)."""
+    if not KB_ROOT.exists():
+        return []
+    return sorted(p.name for p in KB_ROOT.iterdir() if p.is_dir())
 
 
-def ingest_one(processor: DocumentProcessor, folder: str, collection: str) -> bool:
-    """Indexa uma base. Retorna True em sucesso, False em falha/pulada."""
+def ingest_one(processor: DocumentProcessor, folder: str) -> bool:
+    """Indexa uma pasta na base única. Retorna True em sucesso."""
     path = KB_ROOT / folder
     if not path.exists():
         print(f"[skip] {folder}: pasta não encontrada ({path}). Rode bootstrap_kb.sh antes.")
         return False
     try:
-        count = processor.ingest_directory(str(path), collection_name=collection)
-        print(f"[ok]   {folder}: {count} documento(s) indexado(s) na base '{collection}'.")
+        count = processor.ingest_directory(str(path), collection_name=DEFAULT_COLLECTION)
+        print(f"[ok]   {folder}: {count} documento(s) indexado(s) na base única.")
         return True
     except ValueError as exc:
         print(f"[vazio] {folder}: {exc}")
@@ -54,15 +52,13 @@ def ingest_one(processor: DocumentProcessor, folder: str, collection: str) -> bo
 
 
 def main(argv) -> int:
-    targets = argv or list(KNOWLEDGE_BASES.keys())
-    unknown = [t for t in targets if t not in KNOWLEDGE_BASES]
-    if unknown:
-        print(f"Base(s) desconhecida(s): {', '.join(unknown)}")
-        print(f"Disponíveis: {', '.join(KNOWLEDGE_BASES)}")
+    targets = argv or _available_folders()
+    if not targets:
+        print("Nenhuma pasta em knowledge/. Rode scripts/bootstrap_kb.sh primeiro.")
         return 1
 
     processor = DocumentProcessor()
-    results = {folder: ingest_one(processor, folder, KNOWLEDGE_BASES[folder]) for folder in targets}
+    results = {folder: ingest_one(processor, folder) for folder in targets}
 
     failed = [folder for folder, ok in results.items() if not ok]
     if failed:
