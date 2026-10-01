@@ -14,6 +14,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 dist/
@@ -28,3 +29,6 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Knowledge bases baixadas (bootstrap_kb.sh)
+knowledge/

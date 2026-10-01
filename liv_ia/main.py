@@ -38,7 +38,7 @@ def show_menu():
     
     table.add_row("1", "Iniciar Chat Interativo")
     table.add_row("2", "Fazer Pergunta Rápida")
-    table.add_row("3", "Indexar Documentos PDF")
+    table.add_row("3", "Indexar Documentos (PDF, MD, código...)")
     table.add_row("4", "Ver Conversas Salvas")
     table.add_row("5", "Status da Base de Conhecimento")
     table.add_row("6", "Configurações")
@@ -208,22 +208,30 @@ def quick_ask():
         console.print(f"[red]ERRO[/red] {str(e)}")
 
 def ingest_documents():
-    """Indexa documentos PDF"""
+    """Indexa documentos (PDF, Markdown, texto e código-fonte)"""
     path = Prompt.ask(
-        "\n[cyan]Caminho da pasta com PDFs[/cyan]",
+        "\n[cyan]Caminho da pasta com documentos[/cyan]",
         default="./docs"
     )
-    
+
+    collection = Prompt.ask(
+        "\n[cyan]Nome da knowledge base[/cyan] [dim](ex: react, aws, healthtech)[/dim]",
+        default="livia_default"
+    )
+
     console.print(Panel.fit(
         "[bold cyan]LIV IA[/bold cyan] - Processando documentos...",
         border_style="cyan"
     ))
-    
+
     processor = DocumentProcessor()
     try:
-        with console.status("[cyan]Processando PDFs...[/cyan]"):
-            count = processor.ingest_pdfs(path)
-        console.print(f"[green]OK[/green] {count} documentos processados com sucesso!")
+        with console.status("[cyan]Processando documentos...[/cyan]"):
+            count = processor.ingest_directory(path, collection_name=collection)
+        console.print(
+            f"[green]OK[/green] {count} documentos indexados na base "
+            f"[cyan]{collection}[/cyan]!"
+        )
     except Exception as e:
         console.print(f"[red]ERRO[/red] {str(e)}")
 

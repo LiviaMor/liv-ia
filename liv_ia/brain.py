@@ -42,8 +42,9 @@ Responda de forma clara, técnica e fundamentada. Mantenha a continuidade da con
 Se usar documentos, cite-os. Se usar conhecimento geral, deixe claro."""
 
 class LIVIAEngine:
-    def __init__(self, model_name="deepseek-coder-v2", storage_path=".livia_storage", ollama_base_url="http://localhost:11434"):
+    def __init__(self, model_name="deepseek-coder-v2", storage_path=".livia_storage", ollama_base_url="http://localhost:11434", collection_name="livia_default"):
         self.storage_path = storage_path
+        self.collection_name = collection_name
         self.llm = OllamaLLM(
             model=model_name, 
             temperature=0.3,
@@ -62,7 +63,8 @@ class LIVIAEngine:
         if os.path.exists(self.storage_path):
             self.vectorstore = Chroma(
                 persist_directory=self.storage_path,
-                embedding_function=self.embeddings
+                embedding_function=self.embeddings,
+                collection_name=self.collection_name
             )
     
     def ask(self, question: str) -> str:
