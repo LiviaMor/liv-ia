@@ -35,18 +35,22 @@ KNOWLEDGE_BASES = {
 }
 
 
-def ingest_one(processor: DocumentProcessor, folder: str, collection: str) -> None:
+def ingest_one(processor: DocumentProcessor, folder: str, collection: str) -> bool:
+    """Indexa uma base. Retorna True em sucesso, False em falha/pulada."""
     path = KB_ROOT / folder
     if not path.exists():
         print(f"[skip] {folder}: pasta não encontrada ({path}). Rode bootstrap_kb.sh antes.")
-        return
+        return False
     try:
         count = processor.ingest_directory(str(path), collection_name=collection)
         print(f"[ok]   {folder}: {count} documento(s) indexado(s) na base '{collection}'.")
+        return True
     except ValueError as exc:
         print(f"[vazio] {folder}: {exc}")
+        return False
     except Exception as exc:  # pragma: no cover - erros de runtime do Ollama/Chroma
         print(f"[erro] {folder}: {exc}")
+        return False
 
 
 def main(argv) -> int:
@@ -58,8 +62,12 @@ def main(argv) -> int:
         return 1
 
     processor = DocumentProcessor()
-    for folder in targets:
-        ingest_one(processor, folder, KNOWLEDGE_BASES[folder])
+    results = {folder: ingest_one(processor, folder, KNOWLEDGE_BASES[folder]) for folder in targets}
+
+    failed = [folder for folder, ok in results.items() if not ok]
+    if failed:
+        print(f"\nFalha ao indexar: {', '.join(failed)}")
+        return 1
     return 0
 
 

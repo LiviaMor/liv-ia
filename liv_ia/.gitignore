@@ -32,3 +32,7 @@ Thumbs.db
 
 # Knowledge bases baixadas (bootstrap_kb.sh)
 knowledge/
+
+# Logs e lock da atualizacao agendada
+logs/
+.update_kb.lock
