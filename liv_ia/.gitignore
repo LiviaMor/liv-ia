@@ -36,3 +36,6 @@ knowledge/
 # Logs e lock da atualizacao agendada
 logs/
 .update_kb.lock
+
+# Slides Marp gerados localmente
+slides/

@@ -3,6 +3,7 @@ LIV IA Brain - Motor de IA com LangChain e Ollama
 """
 
 import os
+import re
 
 from langchain_classic.chains import RetrievalQA
 from langchain_community.vectorstores import Chroma
@@ -93,6 +94,32 @@ def route_knowledge_base(question: str, default: str = "livia_default") -> str:
         if score > best_score:
             best, best_score = base, score
     return best
+
+
+# Padrões que indicam pedido de criação de slides Marp no chat.
+_MARP_INTENT = re.compile(
+    r"\b(marp|slides?|apresenta[çc][aã]o|apresenta[çc][õo]es)\b",
+    re.IGNORECASE,
+)
+_MARP_TOPIC = re.compile(
+    r"(?:marp|slides?|apresenta[çc][aã]o(?:es)?)\s+(?:sobre|de|do|da|para|a respeito de)\s+(.+)",
+    re.IGNORECASE,
+)
+
+
+def detect_slides_request(message: str):
+    """Detecta pedido de slides Marp e extrai o tópico.
+
+    Returns:
+        O tópico (str) se a mensagem for um pedido de slides; senão None.
+    """
+    if not _MARP_INTENT.search(message):
+        return None
+    m = _MARP_TOPIC.search(message)
+    if m:
+        return m.group(1).strip(" .?!")
+    # Pediu slides mas sem "sobre X" explícito: usa a mensagem toda como tema.
+    return message.strip(" .?!")
 
 
 class LIVIAEngine:
@@ -205,6 +232,35 @@ class LIVIAEngine:
         response = self.llm.invoke(prompt)
         self.chat_history.append(AIMessage(content=response))
         return response + self._format_sources(docs)
+
+    def generate_slides(self, topic: str, out_dir: str = "slides"):
+        """Gera uma apresentação Marp sobre um tópico e salva localmente.
+
+        Usa o LLM (com RAG, se houver base) para produzir o conteúdo dos
+        slides já no formato Marp (blocos separados por '---'), depois salva
+        o arquivo .md via o módulo slides.
+
+        Returns:
+            Caminho (Path) do arquivo .md salvo.
+        """
+        import slides as slides_mod
+
+        instrucao = (
+            "Crie o CONTEÚDO de uma apresentação de slides sobre o tema abaixo. "
+            "Responda APENAS com o corpo dos slides em Markdown, usando '---' em "
+            "uma linha isolada para separar cada slide. Cada slide deve ter um "
+            "título com '## ' e tópicos concisos em bullets. Não inclua "
+            "frontmatter nem ```; apenas o conteúdo dos slides.\n\n"
+            f"Tema: {topic}"
+        )
+
+        if self.vectorstore:
+            docs = self.vectorstore.similarity_search(topic, k=4)
+            contexto = "\n\n".join(d.page_content for d in docs)
+            instrucao = f"Use este contexto como referência:\n{contexto}\n\n" + instrucao
+
+        corpo = self.llm.invoke(instrucao)
+        return slides_mod.save_slides(title=topic, content=corpo, out_dir=out_dir)
 
     def _format_chat_history(self) -> str:
         """Formata o histórico de chat para o prompt"""
