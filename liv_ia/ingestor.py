@@ -17,7 +17,10 @@ from langchain_community.document_loaders import (
 )
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import (
+    MarkdownHeaderTextSplitter,
+    RecursiveCharacterTextSplitter,
+)
 
 # Collection padrão usada quando nenhuma knowledge base é informada.
 # Mantém compatibilidade com o comportamento anterior (base única).
@@ -75,6 +78,42 @@ class DocumentProcessor:
             chunk_overlap=200,
             length_function=len,
         )
+        # Para Markdown, quebramos primeiro por cabeçalhos (seções), preservando
+        # o contexto estrutural do documento, e só depois aplicamos o split por
+        # tamanho nas seções grandes. Isso melhora a precisão do retrieval.
+        self.markdown_splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[
+                ("#", "h1"),
+                ("##", "h2"),
+                ("###", "h3"),
+            ],
+            strip_headers=False,
+        )
+
+    @staticmethod
+    def _is_markdown(doc) -> bool:
+        """Diz se um documento veio de um arquivo Markdown."""
+        metadata = getattr(doc, "metadata", {}) or {}
+        source = str(metadata.get("source", "")).lower()
+        return source.endswith(".md") or source.endswith(".markdown")
+
+    def _split_documents(self, documents):
+        """Divide documentos em chunks, com tratamento especial para Markdown.
+
+        Markdown é quebrado por cabeçalhos (seções) e depois por tamanho;
+        os demais formatos usam apenas o split recursivo por tamanho.
+        """
+        chunks = []
+        for doc in documents:
+            if self._is_markdown(doc):
+                sections = self.markdown_splitter.split_text(doc.page_content)
+                # Mantém os metadados originais (ex.: source) em cada seção.
+                for section in sections:
+                    section.metadata = {**doc.metadata, **section.metadata}
+                chunks.extend(self.text_splitter.split_documents(sections))
+            else:
+                chunks.extend(self.text_splitter.split_documents([doc]))
+        return chunks
 
     @staticmethod
     def supported_extensions():
@@ -136,7 +175,7 @@ class DocumentProcessor:
                 f"(formatos: {', '.join(self.supported_extensions())})"
             )
 
-        chunks = self.text_splitter.split_documents(documents)
+        chunks = self._split_documents(documents)
 
         vectorstore = Chroma.from_documents(
             documents=chunks,

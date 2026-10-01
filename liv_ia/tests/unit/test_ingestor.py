@@ -178,3 +178,49 @@ class TestTextSplitter:
 
         assert processor.text_splitter._chunk_size == 1000
         assert processor.text_splitter._chunk_overlap == 200
+
+
+class TestMarkdownChunking:
+    """Testes para o chunking por cabeçalho em Markdown"""
+
+    @patch("ingestor.OllamaEmbeddings")
+    def test_is_markdown_detection(self, mock_embeddings):
+        processor = DocumentProcessor()
+        md = Mock()
+        md.metadata = {"source": "guia.md"}
+        py = Mock()
+        py.metadata = {"source": "app.py"}
+
+        assert processor._is_markdown(md) is True
+        assert processor._is_markdown(py) is False
+
+    @patch("ingestor.OllamaEmbeddings")
+    def test_markdown_split_by_headers(self, mock_embeddings):
+        """Markdown é quebrado por seções (cabeçalhos), preservando a fonte."""
+        from langchain_core.documents import Document
+
+        processor = DocumentProcessor()
+        content = (
+            "# Título\n\nIntro.\n\n" "## Seção A\n\nConteúdo A.\n\n" "## Seção B\n\nConteúdo B.\n"
+        )
+        doc = Document(page_content=content, metadata={"source": "guia.md"})
+
+        chunks = processor._split_documents([doc])
+
+        # Deve gerar mais de um chunk (uma por seção, no mínimo).
+        assert len(chunks) >= 2
+        # Todos preservam a fonte original.
+        assert all(c.metadata.get("source") == "guia.md" for c in chunks)
+
+    @patch("ingestor.OllamaEmbeddings")
+    def test_non_markdown_uses_recursive_splitter(self, mock_embeddings):
+        """Arquivos não-Markdown usam o split por tamanho normalmente."""
+        from langchain_core.documents import Document
+
+        processor = DocumentProcessor()
+        doc = Document(page_content="print('hello')\n" * 50, metadata={"source": "app.py"})
+
+        chunks = processor._split_documents([doc])
+
+        assert len(chunks) >= 1
+        assert all(c.metadata.get("source") == "app.py" for c in chunks)

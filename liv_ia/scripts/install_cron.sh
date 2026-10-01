@@ -56,7 +56,7 @@ new="$(printf '%s\n%s\n' "${new}" "${CRON_LINE}" | sed '/^$/d')"
 printf '%s\n' "${new}" | crontab -
 
 echo "Agendamento instalado:"
-echo "  quando:  ${SCHEDULE}  (padrão = 03:00 todo dia)"
+echo "  quando:  ${SCHEDULE}  (default = ${DEFAULT_SCHEDULE}, ou seja 03:00)"
 echo "  roda:    ${UPDATE_SCRIPT}"
 echo "  log:     ${PROJECT_DIR}/logs/update_kb.log"
 echo
