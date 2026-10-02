@@ -12,9 +12,10 @@ from brain import LIVIAEngine
 class TestLIVIAEngine:
     """Testes para a classe LIVIAEngine"""
 
+    @patch("brain.os.path.exists", return_value=False)
     @patch("brain.OllamaLLM")
     @patch("brain.OllamaEmbeddings")
-    def test_init(self, mock_embeddings, mock_llm):
+    def test_init(self, mock_embeddings, mock_llm, mock_exists):
         """Testa inicialização do engine"""
         engine = LIVIAEngine()
 
@@ -65,9 +66,10 @@ class TestLIVIAEngine:
         assert "Olá" in result
         assert "Oi, como posso ajudar?" in result
 
+    @patch("brain.os.path.exists", return_value=False)
     @patch("brain.OllamaLLM")
     @patch("brain.OllamaEmbeddings")
-    def test_ask_without_vectorstore(self, mock_embeddings, mock_llm):
+    def test_ask_without_vectorstore(self, mock_embeddings, mock_llm, mock_exists):
         """Testa pergunta sem vectorstore"""
         mock_llm_instance = Mock()
         mock_llm_instance.invoke.return_value = "Resposta do LLM"

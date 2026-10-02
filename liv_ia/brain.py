@@ -87,7 +87,7 @@ def detect_slides_request(message: str):
 class LIVIAEngine:
     def __init__(
         self,
-        model_name="deepseek-coder-v2",
+        model_name="qwen2.5-coder:1.5b",
         storage_path=".livia_storage",
         ollama_base_url="http://localhost:11434",
         collection_name="livia_default",
