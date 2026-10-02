@@ -44,6 +44,15 @@ fetch_nodejs() {
   log "Node.js: ${n} arquivos .md em ${dest}/doc/api"
 }
 
+fetch_reactnative() {
+  log "React Native: baixando docs oficiais (facebook/react-native-website:docs)..."
+  local dest="${KB_DIR}/reactnative"
+  sparse_clone "https://github.com/facebook/react-native-website.git" "docs" "$dest"
+  local n
+  n=$(find "$dest/docs" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  log "React Native: ${n} arquivos .md em ${dest}/docs"
+}
+
 fetch_microservices() {
   log "Microsserviços: baixando padrões event-driven e microsserviços..."
   local dest="${KB_DIR}/microservices"
@@ -88,10 +97,11 @@ main() {
   local target="${1:-all}"
   case "$target" in
     nodejs)        fetch_nodejs ;;
+    reactnative)   fetch_reactnative ;;
     microservices) fetch_microservices ;;
     gps)           fetch_gps ;;
-    all)           fetch_nodejs; fetch_microservices; fetch_gps ;;
-    *) err "Alvo inválido: ${target} (use: nodejs | microservices | gps | all)"; exit 1 ;;
+    all)           fetch_nodejs; fetch_reactnative; fetch_microservices; fetch_gps ;;
+    *) err "Alvo inválido: ${target} (use: nodejs | reactnative | microservices | gps | all)"; exit 1 ;;
   esac
   log "Concluído. Próximo passo: ./scripts/ingest_kb.py"
 }
